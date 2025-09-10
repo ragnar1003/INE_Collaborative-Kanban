@@ -22,8 +22,10 @@ function Card({ card }) {
   const inputRef = useRef(null);
 
   useEffect(() => {
-    setTitle(card.title);
-  }, [card.title]);
+    if (!isEditing) {
+      setTitle(card.title);
+    }
+  }, [card.title, isEditing]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
