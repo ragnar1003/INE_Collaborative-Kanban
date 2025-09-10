@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
-import { useSortable } from '@dnd-kit/sortable';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import Card from './Card';
 import api from '../api';
 import socket from '../socket';
 
-const AddCardForm = ({ columnId, cardInput, setCardInput }) => {
-  const boardId = localStorage.getItem("boardId"); // Or pass as prop
+const AddCardForm = ({ columnId }) => {
+  const [title, setTitle] = useState(''); // State is now local to this component
+  // We need boardId and userId for the typing indicator
+  const boardId = localStorage.getItem("boardId");
   const userId = localStorage.getItem("userId") || "user";
 
   const handleChange = (e) => {
-    setCardInput(e.target.value);
+    setTitle(e.target.value);
     socket.emit("typing", boardId, userId);
   };
 
@@ -22,10 +23,10 @@ const AddCardForm = ({ columnId, cardInput, setCardInput }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!cardInput.trim()) return;
+    if (!title.trim()) return;
     try {
-      await api.post('/cards', { title: cardInput, columnId });
-      setCardInput(''); // Clear input
+      await api.post('/cards', { title: title, columnId });
+      setTitle(''); // Clear local state
       socket.emit("stopTyping", boardId, userId);
     } catch (error) {
       console.error('Failed to create card', error);
@@ -36,12 +37,12 @@ const AddCardForm = ({ columnId, cardInput, setCardInput }) => {
     <form onSubmit={handleSubmit} className="mt-auto pt-3 flex flex-col gap-2">
       <input
         type="text"
-        value={cardInput}
+        value={title}
         onChange={handleChange}
         onBlur={handleBlur}
         placeholder="Enter card title..."
-        className="w-full px-3 py-2 mb-2 border-2 border-blue-200 rounded-lg bg-blue-50 focus:border-blue-500 focus:outline-none transition-colors shadow-sm"
-        style={{ pointerEvents: 'auto' }}
+        className="w-full px-3 py-2 mb-2 border-2 border-slate-300 rounded-lg bg-slate-50 focus:border-blue-500 focus:outline-none transition-colors shadow-sm"
+        onClick={(e) => e.stopPropagation()} // Prevent drag listeners on the column from firing
       />
       <button 
         type="submit"
@@ -53,7 +54,7 @@ const AddCardForm = ({ columnId, cardInput, setCardInput }) => {
   );
 };
 
-function Column({ column, cardInput, setCardInput }) {
+function Column({ column }) {
   const {
     setNodeRef,
     attributes,
@@ -63,14 +64,20 @@ function Column({ column, cardInput, setCardInput }) {
   } = useSortable({ id: column.id });
 
   const style = {
-    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transform: CSS.Transform.toString(transform),
     transition,
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="bg-white/80 rounded-2xl p-6 flex flex-col min-h-80 shadow-xl hover:shadow-2xl transition-all duration-200 border-2 border-blue-200 hover:border-blue-400 hover:-translate-y-1 hover:scale-105 backdrop-blur-md">
-      <h3 className="text-xl font-bold mb-6 px-2 text-blue-900 tracking-wide drop-shadow">{column.title}</h3>
-      <div className="flex-1">
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="bg-gradient-to-br from-blue-100/70 to-white/90 rounded-2xl p-6 w-72 flex-shrink-0 flex flex-col shadow-2xl border-2 border-blue-300 hover:border-blue-500 hover:shadow-3xl transition-all duration-300 backdrop-blur-lg"
+    >
+      <h3 className="text-xl font-extrabold mb-5 text-blue-900 tracking-wide drop-shadow-lg">{column.title}</h3>
+      <div className="flex-1 min-h-[60px]">
         <SortableContext
           items={column.cards?.map(card => card.id) || []}
           strategy={verticalListSortingStrategy}
@@ -80,9 +87,7 @@ function Column({ column, cardInput, setCardInput }) {
           ))}
         </SortableContext>
       </div>
-      <div className="mt-4">
-        <AddCardForm columnId={column.id} cardInput={cardInput} setCardInput={setCardInput} />
-      </div>
+      <AddCardForm columnId={column.id} />
     </div>
   );
 }

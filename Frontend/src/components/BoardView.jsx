@@ -1,17 +1,25 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import { DndContext, closestCorners } from '@dnd-kit/core';
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
+import api from '../api';
+import socket from '../socket';
+import Column from './Column';
+
+// UI component for the Audit Log
 function AuditLog({ boardId }) {
   const [logs, setLogs] = useState([]);
   useEffect(() => {
-    // Fetch audit log for this board
     api.get(`/boards/${boardId}/audit`)
       .then(res => setLogs(res.data))
       .catch(() => setLogs([]));
   }, [boardId]);
   return (
-    <div className="mb-4">
-      <strong className="text-gray-700">Audit Log:</strong>
-      <ul className="pl-4 mt-2">
+    <div className="info-section">
+      <strong>Audit Log:</strong>
+      <ul className="log-list">
         {logs.map((log, idx) => (
-          <li key={idx} className="text-xs text-gray-500 mb-1">
+          <li key={idx} className="log-item">
             [{new Date(log.createdAt).toLocaleTimeString()}] {log.eventType}: {log.details?.title || log.details?.message || ""}
           </li>
         ))}
@@ -19,22 +27,14 @@ function AuditLog({ boardId }) {
     </div>
   );
 }
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
-import { DndContext, closestCorners } from '@dnd-kit/core';
-import { SortableContext } from '@dnd-kit/sortable';
-import { horizontalListSortingStrategy } from '@dnd-kit/sortable';
-import api from '../api';
-import socket from '../socket';
-import Column from './Column';
 
-// Presence and typing indicator UI
+// UI component for Presence and Typing indicators
 function PresenceBar({ onlineUsers, typingUsers }) {
   return (
-    <div className="text-sm text-gray-600">
+    <div className="presence-bar">
       <strong>Online:</strong> {onlineUsers.length ? onlineUsers.join(", ") : "None"}
       {typingUsers.length > 0 && (
-        <span className="ml-4 text-blue-600 font-medium">
+        <span className="typing-indicator">
           Typing: {typingUsers.join(", ")}
         </span>
       )}
@@ -42,7 +42,20 @@ function PresenceBar({ onlineUsers, typingUsers }) {
   );
 }
 
-// New component for adding a column
+// UI component for Notifications
+function NotificationBar({ notifications }) {
+    return (
+      <div className="notification-container">
+        {notifications.map((n, idx) => (
+          <div key={idx} className="notification">
+            {n.message}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+// Form for adding a new column
 const AddColumnForm = ({ boardId }) => {
   const [title, setTitle] = useState('');
 
@@ -51,31 +64,29 @@ const AddColumnForm = ({ boardId }) => {
     if (!title.trim()) return;
     try {
       await api.post('/columns', { title, boardId });
-      setTitle(''); // Clear input after submission
+      setTitle('');
     } catch (error) {
       console.error('Failed to create column', error);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+    <form onSubmit={handleSubmit} className="add-column-form">
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Enter column title..."
-        className="w-full px-3 py-2 border-2 border-slate-300 rounded-lg bg-slate-50 focus:border-blue-500 focus:outline-none transition-colors"
+        className="input"
       />
-      <button 
-        type="submit"
-        className="w-full px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-md hover:shadow-lg"
-      >
+      <button type="submit" className="button">
         Add Column
       </button>
     </form>
   );
 };
 
+// Main BoardView component
 function BoardView() {
   const { boardId } = useParams();
   const [board, setBoard] = useState(null);
@@ -83,17 +94,16 @@ function BoardView() {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  // Store card input state per column
-  const [cardInputs, setCardInputs] = useState({});
+  const boardRef = useRef(null);
 
-  // Helper: deep compare two objects
+  // Helper function for deep object comparison to prevent unnecessary re-renders
   function deepEqual(a, b) {
     return JSON.stringify(a) === JSON.stringify(b);
   }
 
-  const boardRef = useRef(null);
-
   useEffect(() => {
+    localStorage.setItem("boardId", boardId);
+    
     api.get(`/boards/${boardId}`)
       .then(res => {
         setBoard(res.data);
@@ -108,8 +118,8 @@ function BoardView() {
     socket.connect();
     const userId = localStorage.getItem("userId") || "user";
     socket.emit('joinBoard', boardId, userId);
+
     socket.on('boardUpdated', (newBoard) => {
-      // Only update if board actually changed
       if (!deepEqual(boardRef.current, newBoard)) {
         setBoard(newBoard);
         boardRef.current = newBoard;
@@ -135,7 +145,6 @@ function BoardView() {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    // Determine the target column ID
     let toColumnId = over.id;
     const overIsColumn = board.columns.some(col => col.id === over.id);
     if (!overIsColumn) {
@@ -147,49 +156,35 @@ function BoardView() {
 
     api.put(`/cards/${active.id}/move`, {
       toColumnId: toColumnId,
-      toPosition: 0 // Simplified: always move to the top
+      toPosition: 0 // Simplified for now
     }).catch(err => console.error("Failed to move card", err));
   };
 
-  if (loading) return <div>Loading board...</div>;
-  if (!board) return <div>Board not found.</div>;
+  if (loading) return <div className="loading-screen">Loading Board...</div>;
+  if (!board) return <div className="loading-screen">Board not found.</div>;
 
   const columnIds = board.columns?.map(col => col.id) || [];
 
-  // Notification UI
-  const NotificationBar = ({ notifications }) => (
-    <div>
-      {notifications.map((n, idx) => (
-        <div key={idx} className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 mb-2 rounded-lg text-sm shadow-sm">
-          {n.message}
-        </div>
-      ))}
-    </div>
-  );
-
   return (
-  <div className="w-full min-h-screen px-2 md:px-8 py-8 bg-gradient-to-br from-slate-50/80 to-blue-100/60 flex flex-col items-center justify-start">
-      <h2 className="text-4xl font-extrabold mb-8 text-blue-900 tracking-tight drop-shadow-lg">{board.title}</h2>
-      <div className="mb-6">
-        <NotificationBar notifications={notifications} />
-      </div>
-      <div className="mb-6">
+    <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 via-slate-100 to-blue-200 flex flex-col items-center py-8 px-2">
+      <div className="w-full max-w-7xl mx-auto mb-8">
+        <h2 className="text-4xl font-extrabold text-blue-900 tracking-tight mb-2 text-center drop-shadow-lg">{board.title}</h2>
         <PresenceBar onlineUsers={onlineUsers} typingUsers={typingUsers} />
       </div>
-      <AuditLog boardId={board.id} />
+
+      <div className="w-full max-w-4xl mx-auto mb-6">
+        <NotificationBar notifications={notifications} />
+        <AuditLog boardId={board.id} />
+      </div>
+
       <DndContext collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
-        <div className="w-full max-w-7xl overflow-x-auto flex gap-8 p-6 bg-gradient-to-r from-blue-50/80 via-slate-100/80 to-blue-100/60 rounded-2xl min-h-[400px] shadow-xl">
+        <div className="w-full max-w-7xl flex gap-8 overflow-x-auto py-4 px-2 scrollbar-thin scrollbar-thumb-blue-400 scrollbar-track-blue-100">
           <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
             {board.columns?.map(col => (
-              <Column 
-                key={col.id} 
-                column={col} 
-                cardInput={cardInputs[col.id] || ""}
-                setCardInput={value => setCardInputs(inputs => ({ ...inputs, [col.id]: value }))}
-              />
+              <Column key={col.id} column={col} />
             ))}
           </SortableContext>
-          <div className="p-6 bg-white/80 rounded-xl border-2 border-blue-200 shadow-lg h-fit backdrop-blur-md">
+          <div className="bg-white/80 rounded-xl p-6 w-72 flex-shrink-0 h-fit shadow-xl border-2 border-blue-200 backdrop-blur-md">
             <AddColumnForm boardId={board.id} />
           </div>
         </div>
