@@ -4,6 +4,7 @@ import initUser from "./User.js";
 import initBoard from "./Board.js";
 import initColumn from "./Column.js";
 import initCard from "./Card.js";
+import AuditLog from "./AuditLog.js";
 
 const User = initUser(sequelize);
 const Board = initBoard(sequelize);
@@ -23,5 +24,5 @@ Card.belongsTo(Column, { foreignKey: "columnId", as: "column" });
 
 
 
-export { sequelize, User, Board, Column, Card };
-export default { sequelize, User, Board, Column, Card };
+export { sequelize, User, Board, Column, Card, AuditLog };
+
